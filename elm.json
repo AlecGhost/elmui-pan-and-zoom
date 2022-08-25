@@ -1,15 +1,18 @@
 {
-  "type": "package",
-  "name": "JohanWinther/elm-pan-and-zoom",
-  "summary": "Make an element pannable and zoomable by dragging and scrolling.",
-  "license": "BSD-3-Clause",
-  "version": "1.0.0",
-  "exposed-modules": ["PanZoom", "PanZoom.Mouse"],
-  "elm-version": "0.19.1 <= v < 1.0.0",
-  "dependencies": {
-    "elm/core": "1.0.0 <= v < 2.0.0",
-    "elm/html": "1.0.0 <= v < 2.0.0",
-    "elm/json": "1.1.3 <= v < 2.0.0"
-  },
-  "test-dependencies": {}
+    "type": "package",
+    "name": "JohanWinther/elm-pan-and-zoom",
+    "summary": "Make an element pannable and zoomable by dragging and scrolling.",
+    "license": "BSD-3-Clause",
+    "version": "2.0.0",
+    "exposed-modules": [
+        "PanZoom",
+        "PanZoom.Mouse"
+    ],
+    "elm-version": "0.19.1 <= v < 1.0.0",
+    "dependencies": {
+        "elm/core": "1.0.0 <= v < 2.0.0",
+        "elm/html": "1.0.0 <= v < 2.0.0",
+        "elm/json": "1.1.3 <= v < 2.0.0"
+    },
+    "test-dependencies": {}
 }
