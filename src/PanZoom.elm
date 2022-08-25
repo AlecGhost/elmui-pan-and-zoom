@@ -3,7 +3,7 @@ module PanZoom exposing
     , Model, init, view, update, MouseEvent(..)
     , getScale, Scale, getPosition, Coordinate, getMousePosition
     , moveBy, moveTo
-    , scaleBy, scaleTo, Anchor(..), getViewport, Viewport
+    , scaleBy, scaleTo, Anchor(..)
     )
 
 {-| This module implements a pannable and zoomable component.
@@ -34,16 +34,14 @@ module PanZoom exposing
 
 ## Zooming
 
-@docs scaleBy, scaleTo, Anchor, getViewport, Viewport
+@docs scaleBy, scaleTo, Anchor
 
 -}
 
-import Browser.Dom
 import Html as H
 import Html.Attributes as HA
 import Html.Events exposing (onMouseLeave, onMouseUp)
 import PanZoom.Mouse as Mouse exposing (onMouseDown, onMouseMove, onWheelScroll)
-import Task
 
 
 
@@ -52,15 +50,31 @@ import Task
 
 {-| Configuration options for the component.
 
-  - `id` - Adds an `id` HTML attribute to the viewport element. Needs to be set for [`getViewport`](PanZoom#getViewport) to return a `Just`.
+  - `viewportOffset` - Tell the component the offset of the viewport's the top left corner
+    (needed to properly convert between the internal and browser coordinate systems).
 
-  - `width` - Width of the content box in pixels.
+    **NOTE:** this will **not set** the offset, only **inform** the component of the offset.
+    This will allow you to set the viewport offset with CSS yourself.
 
-    **WARNING:** this can be overriden by adding the `width` CSS property to the content box, but this will break the scaling logic.
+    If your CSS positional logic is too complicated to specify the offset beforehand you can perform these steps:
 
-  - `height` - Height of the content box in pixels.
+    1.  In your initial `Config` set `viewportOffset` to the default value of
 
-    **WARNING:** this can be overriden by adding the `width` CSS property to the content box, but this will break the scaling logic.
+            viewportOffset =
+                { x = 0, y = 0 }
+
+    2.  Call [`Browser.Dom.getElement`](https://package.elm-lang.org/packages/elm/browser/latest/Browser-Dom#getElement)
+        and [attempt](https://package.elm-lang.org/packages/elm/core/latest/Task#attempt) the task.
+
+    3.  In the logic receiving the `Msg` containing the
+        [`Browser.Dom.Element`](https://package.elm-lang.org/packages/elm/browser/latest/Browser-Dom#Element),
+        extract the fields `element.x` and `element.y` and override the config of your `PanZoom.Model`
+
+            let
+                oldConfig = panZoomModel.config
+                newConfig = { oldConfig | viewportOffset = {x = element.x, y = element.y }
+            in
+            { panZoomModel | config = newConfig }
 
   - `minScale` - Set a minimum possible scale. This will decide how far you can zoom out.
 
@@ -72,13 +86,11 @@ import Task
 
   - `toSelf` -- Map this component's [`MouseEvent`](PanZoom#MouseEvent)s to a `Msg` so that the parent can properly [`update`](PanZoom#update) the component.
 
-**Note:** the viewport's default height is `100vh` but can be overriden by adding your own style attribute in [`view`](PanZoom#view).
+**Note:** the viewport's default dimensions are `100vw` and `100vh` respectively but can be overriden by adding your own style attribute in [`view`](PanZoom#view).
 
 -}
 type alias Config msg =
-    { id : Maybe String
-    , width : Float
-    , height : Float
+    { viewportOffset : Coordinate
     , minScale : Maybe Scale
     , maxScale : Maybe Scale
     , scrollScaleFactor : Float
@@ -89,9 +101,7 @@ type alias Config msg =
 
 {-| Default configuration:
 
-    { id = Nothing
-    , width = 1920
-    , height = 1080
+    { viewportOffset = { x = 0, y = 0 }
     , minScale = Nothing
     , maxScale = Nothing
     , scrollScaleFactor = 1.1
@@ -102,9 +112,7 @@ type alias Config msg =
 -}
 defaultConfig : (MouseEvent -> msg) -> Config msg
 defaultConfig toSelf =
-    { id = Nothing
-    , width = 1920
-    , height = 1080
+    { viewportOffset = { x = 0, y = 0 }
     , minScale = Nothing
     , maxScale = Nothing
     , scrollScaleFactor = 1.1
@@ -116,7 +124,9 @@ defaultConfig toSelf =
 {-| Filters elements by class name.
 
   - `Include` - dragging the content box will **only** be possible on child elements with any of these class names.
+    The viewport itself needs to have a class in this list to be draggable.
   - `Exclude` - dragging the content box will **not** be possible on child elements with any of these class names.
+    The viewport itself can have a class in this list to be non-draggable.
 
 -}
 type ElementFilter
@@ -142,15 +152,40 @@ type alias Model msg =
     }
 
 
-{-| Creates a `Model` with a [`Config`](PanZoom#config) and an initial state.
+{-| Creates a `Model` from a [`Config`](PanZoom#config) and an initial scale and position for the content box.
+
+`scale` will be clamped by `minScale` and `maxScale` if they are set.
+
+`position` sets the position of the center point of the content box.
+So in order to position the content box at point `p` with respect to its top left corner you will need to set
+
+    position =
+        { x = p.x + width / 2, y = p.y + height / 2 }
+
+where the `width` and `height` are the dimensions of the content box specified in pixels.
+
 -}
 init : Config msg -> { scale : Scale, position : Coordinate } -> Model msg
-init config initialState =
+init config { scale, position } =
     { config = config
     , state =
         State
-            { position = initialState.position
-            , scale = initialState.scale
+            { position = position |> toViewportCoordinates config
+            , scale =
+                (case ( config.minScale, config.maxScale ) of
+                    ( Just minScale, Just maxScale ) ->
+                        clamp minScale maxScale
+
+                    ( Just minScale, Nothing ) ->
+                        max minScale
+
+                    ( Nothing, Just maxScale ) ->
+                        min maxScale
+
+                    ( Nothing, Nothing ) ->
+                        identity
+                )
+                    scale
             , draggingMousePosition = Nothing
             }
     }
@@ -226,9 +261,7 @@ update mouseEvent model =
                         Mouse.ScrollHorizontal ->
                             1
             in
-            model
-                |> scaleBy factor (Point <| Mouse.asCoordinate p)
-                |> Maybe.withDefault model
+            model |> scaleBy factor (Point <| Mouse.asCoordinate p)
 
 
 {-| Mouse events.
@@ -245,7 +278,7 @@ type MouseEvent
 The elements provided in `content` will become direct descendants of the content box.
 
 It is possible to provide additional HTML attributes to the viewport and content box.
-For example it is recommended to add the `user-select` CSS property so that any text is not selected while dragging.
+For example it is recommended to add the `user-select` CSS property to the viewport to prevent text from being selected while dragging.
 
 **WARNING:** Some attributes/styles should not be overriden for proper function.
 For the viewport these are:
@@ -256,9 +289,6 @@ For the viewport these are:
 For the content box these are:
 
   - `transform` CSS property
-  - `position` CSS property
-  - `width` CSS property (set in [`Config`](PanZoom#Config) instead)
-  - `height` CSS property (set in [`Config`](PanZoom#Config) instead)
 
 -}
 view :
@@ -266,10 +296,10 @@ view :
     ->
         { viewportAttributes : List (H.Attribute msg)
         , contentAttributes : List (H.Attribute msg)
-        , content : List (H.Html msg)
         }
+    -> List (H.Html msg)
     -> H.Html msg
-view model { viewportAttributes, contentAttributes, content } =
+view model { viewportAttributes, contentAttributes } content =
     let
         (State state) =
             model.state
@@ -278,12 +308,14 @@ view model { viewportAttributes, contentAttributes, content } =
         transform { x, y } s =
             HA.style "transform" <|
                 String.join " "
-                    [ "translate(" ++ String.fromFloat x ++ "px ," ++ String.fromFloat y ++ "px)"
+                    [ "translate(-50%, -50%)" -- Center the content box
+                    , "translate(" ++ String.fromFloat x ++ "px ," ++ String.fromFloat y ++ "px)"
                     , "scale(" ++ String.fromFloat s ++ ")"
                     ]
     in
     H.div
         ([ HA.style "overflow" "hidden"
+         , HA.style "width" "100vw"
          , HA.style "height" "100vh"
          , HA.map model.config.toSelf <| onMouseDown MousePressed
          , HA.map model.config.toSelf <| onMouseUp MouseReleased
@@ -299,21 +331,10 @@ view model { viewportAttributes, contentAttributes, content } =
                     []
                )
             ++ viewportAttributes
-            ++ (case model.config.id of
-                    Just id ->
-                        [ HA.id id ]
-
-                    Nothing ->
-                        []
-               )
         )
         [ H.div
-            ([ transform state.position state.scale
-             , HA.style "position" "relative"
-             , HA.style "width" <| String.fromFloat model.config.width ++ "px"
-             , HA.style "height" <| String.fromFloat model.config.height ++ "px"
-             ]
-                ++ contentAttributes
+            (transform state.position state.scale
+                :: contentAttributes
             )
             content
         ]
@@ -334,7 +355,7 @@ getScale model =
     state.scale
 
 
-{-| Get the position of the content box.
+{-| Get the position of the center point of the content box.
 -}
 getPosition : Model msg -> Coordinate
 getPosition model =
@@ -342,10 +363,10 @@ getPosition model =
         (State state) =
             model.state
     in
-    state.position
+    fromViewportCoordinates model.config state.position
 
 
-{-| Get the mouse position if the content box is being dragged.
+{-| Get the mouse position (if the content box is being dragged).
 -}
 getMousePosition : Model msg -> Maybe Coordinate
 getMousePosition model =
@@ -376,7 +397,7 @@ moveBy delta model =
     { model | state = model.state |> movePosition delta }
 
 
-{-| Move the content box to a point.
+{-| Move the content box center point to a new position.
 
 Given a model where
 
@@ -386,13 +407,23 @@ the following holds
 
     getPosition (model |> moveTo { x = -15, y = 5 }) == { x = -15, y = 5 }
 
+In order to position the content box at point `p` with respect to its top left corner you will need to call
+
+    moveTo { x = p.x + width / 2, y = p.y + height / 2 }
+
+where the `width` and `height` are the dimensions of the content box specified in pixels.
+
 -}
 moveTo : Coordinate -> Model msg -> Model msg
 moveTo position model =
-    { model | state = model.state |> setPosition position }
+    { model
+        | state =
+            model.state
+                |> setPosition (position |> toViewportCoordinates model.config)
+    }
 
 
-{-| Scale the content box by a relative value.
+{-| Scale the content box by a relative value (if within the `minScale`/`maxScale` bounds).
 
 Given a model where
 
@@ -403,52 +434,48 @@ the following holds
     getScale (model |> scaleBy factor ContentCenter) == scale * factor
 
 -}
-scaleBy : Float -> Anchor -> Model msg -> Maybe (Model msg)
+scaleBy : Float -> Anchor -> Model msg -> Model msg
 scaleBy amount anchor model =
     let
         (State state) =
             model.state
 
-        config =
-            model.config
-
         scale =
             state.scale * amount
 
+        clampedScale =
+            clamp
+                (Maybe.withDefault scale model.config.minScale)
+                (Maybe.withDefault scale model.config.maxScale)
+                scale
+
+        clampedAmount =
+            clampedScale / state.scale
+
         newPositionDueToScaling point =
-            let
-                pointNorm =
-                    { x = point.x - config.width / 2, y = point.y - config.height / 2 }
-            in
-            { x = pointNorm.x - amount * (pointNorm.x - state.position.x)
-            , y = pointNorm.y - amount * (pointNorm.y - state.position.y)
+            { x = point.x - clampedAmount * (point.x - state.position.x)
+            , y = point.y - clampedAmount * (point.y - state.position.y)
             }
-
-        insideMin =
-            Maybe.withDefault True <| Maybe.map (\m -> m <= scale) model.config.minScale
-
-        insideMax =
-            Maybe.withDefault True <| Maybe.map (\m -> scale <= m) model.config.maxScale
     in
-    if insideMin && insideMax then
-        { model | state = model.state |> setScale scale }
-            |> (case anchor of
-                    Point point ->
-                        moveTo <| newPositionDueToScaling point
+    { model
+        | state =
+            model.state
+                |> setScale clampedScale
+                |> (case anchor of
+                        Point point ->
+                            setPosition
+                                (point
+                                    |> toViewportCoordinates model.config
+                                    |> newPositionDueToScaling
+                                )
 
-                    ViewportCenter viewport ->
-                        moveTo <| newPositionDueToScaling <| viewportCenter viewport
-
-                    ContentCenter ->
-                        identity
-               )
-            |> Just
-
-    else
-        Nothing
+                        ContentCenter ->
+                            identity
+                   )
+    }
 
 
-{-| Scale the content box to an absolute scaling.
+{-| Scale the content box to an absolute scaling (if within the `minScale`/`maxScale` bounds).
 
 Given a model where
 
@@ -459,7 +486,7 @@ the following holds
     getScale (model |> scaleTo newScale ContentCenter) == newScale
 
 -}
-scaleTo : Scale -> Anchor -> Model msg -> Maybe (Model msg)
+scaleTo : Scale -> Anchor -> Model msg -> Model msg
 scaleTo scale anchor model =
     let
         (State state) =
@@ -469,48 +496,10 @@ scaleTo scale anchor model =
 
 
 {-| The anchor point to scale the content box with respect to.
-
-To use the `ViewportCenter` you need to provide a [`Viewport`](PanZoom#Viewport) which can be created with [`getViewport`](PanZoom#getViewport).
-
 -}
 type Anchor
     = Point Coordinate
-    | ViewportCenter Viewport
     | ContentCenter
-
-
-{-| Viewport position and dimensions.
-
-Can only be created with [`getViewport`](PanZoom#getViewport).
-
--}
-type Viewport
-    = Viewport { x : Float, y : Float, width : Float, height : Float }
-
-
-{-| Maybe creates a [`Cmd`](https://package.elm-lang.org/packages/elm/core/latest/Platform-Cmd#Cmd) to get the dimensions of the viewport.
-
-The function will return `Nothing` if `model.config.id == Nothing`.
-
--}
-getViewport :
-    Model msg
-    ->
-        Maybe
-            (Cmd
-                (Result Browser.Dom.Error Viewport)
-            )
-getViewport model =
-    let
-        toViewport : Browser.Dom.Element -> Viewport
-        toViewport { element } =
-            Viewport { x = element.x, y = element.y, width = element.width, height = element.height }
-    in
-    model.config.id
-        |> Maybe.map
-            (Browser.Dom.getElement
-                >> Task.attempt (Result.map toViewport)
-            )
 
 
 
@@ -525,7 +514,7 @@ Values inside can be accessed with [getters](#getters) e.g. [`getScale`](PanZoom
 type State
     = State
         { scale : Scale
-        , position : Coordinate
+        , position : Coordinate -- Position in viewport coordinate system
         , draggingMousePosition : Maybe Mouse.Position
         }
 
@@ -535,6 +524,8 @@ setScale scale (State state) =
     State { state | scale = scale }
 
 
+{-| Set content box position in viewport coordinate system.
+-}
 setPosition : Coordinate -> State -> State
 setPosition position (State state) =
     State { state | position = position }
@@ -556,15 +547,22 @@ setMousePosition mMousePosition (State state) =
     State { state | draggingMousePosition = mMousePosition }
 
 
-{-| Center point of a viewport.
--}
-viewportCenter : Viewport -> Coordinate
-viewportCenter (Viewport { x, y, width, height }) =
-    { x = x + width / 2, y = y + height / 2 }
-
-
 
 -- Utilities
+
+
+toViewportCoordinates : Config msg -> Coordinate -> Coordinate
+toViewportCoordinates { viewportOffset } position =
+    { x = position.x - viewportOffset.x
+    , y = position.y - viewportOffset.y
+    }
+
+
+fromViewportCoordinates : Config msg -> Coordinate -> Coordinate
+fromViewportCoordinates { viewportOffset } position =
+    { x = position.x + viewportOffset.x
+    , y = position.y + viewportOffset.y
+    }
 
 
 {-| Two dimensional vector that can represent a point or direction.
