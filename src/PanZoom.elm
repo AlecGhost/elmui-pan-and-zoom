@@ -275,20 +275,15 @@ type MouseEvent
 
 {-| Show the component with some content.
 
-The elements provided in `content` will become direct descendants of the content box.
+The elements provided as content will become direct descendants of the content box.
 
-It is possible to provide additional HTML attributes to the viewport and content box.
+It is possible to provide additional HTML attributes to the viewport and the content box.
 For example it is recommended to add the `user-select` CSS property to the viewport to prevent text from being selected while dragging.
 
-**WARNING:** Some attributes/styles should not be overriden for proper function.
-For the viewport these are:
+**WARNING:** These styles should not be overriden for proper function:
 
-  - `id` HTML attribute (set in [`Config`](PanZoom#Config) instead)
-  - `overflow` CSS property
-
-For the content box these are:
-
-  - `transform` CSS property
+  - `overflow` CSS property on the viewport
+  - `transform` CSS property on the content box
 
 -}
 view :
@@ -309,7 +304,7 @@ view model { viewportAttributes, contentAttributes } content =
             HA.style "transform" <|
                 String.join " "
                     [ "translate(-50%, -50%)" -- Center the content box
-                    , "translate(" ++ String.fromFloat x ++ "px ," ++ String.fromFloat y ++ "px)"
+                    , "translate(" ++ String.fromFloat x ++ "px ," ++ String.fromFloat y ++ "px)" -- Move center point to position
                     , "scale(" ++ String.fromFloat s ++ ")"
                     ]
     in
