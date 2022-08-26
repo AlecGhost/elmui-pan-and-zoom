@@ -282,8 +282,10 @@ For example it is recommended to add the `user-select` CSS property to the viewp
 
 **WARNING:** These styles should not be overriden for proper function:
 
-  - `overflow` CSS property on the viewport
-  - `transform` CSS property on the content box
+  - `overflow: hidden` (viewport)
+  - `box-sizing: border-box` (viewport)
+  - `box-sizing: border-box` (content box)
+  - `transform` (content box)
 
 -}
 view :
@@ -302,14 +304,18 @@ view model { viewportAttributes, contentAttributes } content =
         transform : Coordinate -> Scale -> H.Attribute msg
         transform { x, y } s =
             HA.style "transform" <|
-                String.join " "
-                    [ "translate(-50%, -50%)" -- Center the content box
-                    , "translate(" ++ String.fromFloat x ++ "px ," ++ String.fromFloat y ++ "px)" -- Move center point to position
-                    , "scale(" ++ String.fromFloat s ++ ")"
-                    ]
+                String.join " " <|
+                    -- Center the content box
+                    "translate(-50%, -50%)"
+                        :: listWhen (x /= 0 || y /= 0)
+                            -- Move center point to position
+                            [ "translate(" ++ String.fromFloat x ++ "px ," ++ String.fromFloat y ++ "px)" ]
+                        ++ listWhen (s /= 1)
+                            [ "scale(" ++ String.fromFloat s ++ ")" ]
     in
     H.div
         ([ HA.style "overflow" "hidden"
+         , HA.style "box-sizing" "border-box"
          , HA.style "width" "100vw"
          , HA.style "height" "100vh"
          , HA.map model.config.toSelf <| onMouseDown MousePressed
@@ -328,8 +334,10 @@ view model { viewportAttributes, contentAttributes } content =
             ++ viewportAttributes
         )
         [ H.div
-            (transform state.position state.scale
-                :: contentAttributes
+            ([ transform state.position state.scale
+             , HA.style "box-sizing" "border-box"
+             ]
+                ++ contentAttributes
             )
             content
         ]
@@ -572,3 +580,12 @@ type alias Coordinate =
 -}
 type alias Scale =
     Float
+
+
+listWhen : Bool -> List a -> List a
+listWhen cond l =
+    if cond then
+        l
+
+    else
+        []
