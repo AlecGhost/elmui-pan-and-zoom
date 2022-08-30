@@ -1,7 +1,6 @@
 module PanZoom.Mouse exposing
     ( onMouseMove, onMouseDown, onWheelScroll
     , Position, asCoordinate, Coordinate, delta
-    , ScrollDirection(..)
     )
 
 {-| This module includes abstractions for handling mouse events.
@@ -15,11 +14,6 @@ module PanZoom.Mouse exposing
 # Mouse position
 
 @docs Position, asCoordinate, Coordinate, delta
-
-
-# Scroll wheel
-
-@docs ScrollDirection
 
 -}
 
@@ -51,9 +45,9 @@ onMouseDown message =
         )
 
 
-{-| Custom event listener for `wheel` that returns the mouse `Position` and the `ScrollDirection` of the wheel.
+{-| Custom event listener for `wheel` that returns the mouse `Position` and the scroll amount of the wheel (in pixels).
 -}
-onWheelScroll : (Position -> ScrollDirection -> msg) -> H.Attribute msg
+onWheelScroll : (Position -> Float -> msg) -> H.Attribute msg
 onWheelScroll message =
     HE.on "wheel"
         (JD.map2 message
@@ -101,28 +95,9 @@ delta (Position p1) (Position p2) =
     }
 
 
-{-| Scroll wheel direction.
--}
-type ScrollDirection
-    = ScrollUp
-    | ScrollHorizontal
-    | ScrollDown
-
-
-scrollDecoder : JD.Decoder ScrollDirection
+scrollDecoder : JD.Decoder Float
 scrollDecoder =
-    JD.map
-        (\deltaY ->
-            if deltaY < 0 then
-                ScrollUp
-
-            else if deltaY > 0 then
-                ScrollDown
-
-            else
-                ScrollHorizontal
-        )
-        (JD.at [ "deltaY" ] JD.float)
+    JD.at [ "deltaY" ] JD.float
 
 
 

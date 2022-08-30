@@ -80,7 +80,8 @@ import PanZoom.Mouse as Mouse exposing (onMouseDown, onMouseMove, onWheelScroll)
 
   - `maxScale` - Set a maximum possible scale. This will decide how far you can zoom in.
 
-  - `scrollScaleFactor` - The factor to scale by when scrolling. For example setting this to `1.1` will scale the content box by 10 % on every scroll.
+  - `scalePerScrollPixel` - The factor to scale by when scrolling (per pixel).
+    For example setting this to `0.001` will zoom in the content box by 0.1 % when scrolling 1px and 1/(1+0.1%) when scrolling -1px.
 
   - `draggableOnChildren` - If you want to disable the panning logic when dragging on child elements in the content box.
 
@@ -93,7 +94,7 @@ type alias Config msg =
     { viewportOffset : Coordinate
     , minScale : Maybe Scale
     , maxScale : Maybe Scale
-    , scrollScaleFactor : Float
+    , scalePerScrollPixel : Float
     , draggableOnChildren : ElementFilter
     , toSelf : MouseEvent -> msg
     }
@@ -104,7 +105,7 @@ type alias Config msg =
     { viewportOffset = { x = 0, y = 0 }
     , minScale = Nothing
     , maxScale = Nothing
-    , scrollScaleFactor = 1.1
+    , scalePerScrollPixel = 0.001
     , draggableOnChildren = Exclude []
     , toSelf = toSelf
     }
@@ -115,7 +116,7 @@ defaultConfig toSelf =
     { viewportOffset = { x = 0, y = 0 }
     , minScale = Nothing
     , maxScale = Nothing
-    , scrollScaleFactor = 1.1
+    , scalePerScrollPixel = 0.001
     , draggableOnChildren = Exclude []
     , toSelf = toSelf
     }
@@ -248,20 +249,19 @@ update mouseEvent model =
                 | state = model.state |> setMousePosition Nothing
             }
 
-        WheelScrolled p dir ->
+        WheelScrolled p pixels ->
             let
                 factor =
-                    case dir of
-                        Mouse.ScrollUp ->
-                            model.config.scrollScaleFactor
+                    1 + model.config.scalePerScrollPixel * abs pixels
 
-                        Mouse.ScrollDown ->
-                            1 / model.config.scrollScaleFactor
+                amount =
+                    if pixels >= 0 then
+                        1 / factor
 
-                        Mouse.ScrollHorizontal ->
-                            1
+                    else
+                        factor
             in
-            model |> scaleBy factor (Point <| Mouse.asCoordinate p)
+            model |> scaleBy amount (Point <| Mouse.asCoordinate p)
 
 
 {-| Mouse events.
@@ -270,7 +270,7 @@ type MouseEvent
     = MouseMoved Mouse.Position
     | MousePressed Mouse.Position ClassList
     | MouseReleased
-    | WheelScrolled Mouse.Position Mouse.ScrollDirection
+    | WheelScrolled Mouse.Position Float
 
 
 {-| Show the component with some content.
