@@ -1,6 +1,10 @@
 # Pan and zoom
 
-A component that supports dragging and scrolling with the mouse to pan and zoom.
+An elm-ui component that supports dragging and scrolling with the mouse to pan and zoom.
+
+This is a fork from [JohanWinther/elm-pan-and-zoom](https://github.com/JohanWinther/elm-pan-and-zoom).
+All the credit goes to the original author.
+This fork just adapts the view-function to integrate well with [elm-ui](https://github.com/mdgriffith/elm-ui).
 
 # Component
 
