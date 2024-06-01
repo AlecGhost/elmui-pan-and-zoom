@@ -38,6 +38,7 @@ module PanZoom exposing
 
 -}
 
+import Element exposing (Attribute, Element, el, htmlAttribute)
 import Html as H
 import Html.Attributes as HA
 import Html.Events exposing (onMouseLeave, onMouseUp)
@@ -291,11 +292,11 @@ For example it is recommended to add the `user-select` CSS property to the viewp
 view :
     Model msg
     ->
-        { viewportAttributes : List (H.Attribute msg)
-        , contentAttributes : List (H.Attribute msg)
+        { viewportAttributes : List (Attribute msg)
+        , contentAttributes : List (Attribute msg)
         }
-    -> List (H.Html msg)
-    -> H.Html msg
+    -> Element msg
+    -> Element msg
 view model { viewportAttributes, contentAttributes } content =
     let
         (State state) =
@@ -313,7 +314,7 @@ view model { viewportAttributes, contentAttributes } content =
                         ++ listWhen (s /= 1)
                             [ "scale(" ++ String.fromFloat s ++ ")" ]
     in
-    H.div
+    el
         ([ HA.style "overflow" "hidden"
          , HA.style "box-sizing" "border-box"
          , HA.style "width" "100vw"
@@ -331,16 +332,18 @@ view model { viewportAttributes, contentAttributes } content =
                 else
                     []
                )
-            ++ viewportAttributes
+            |> List.map htmlAttribute
+            |> List.append viewportAttributes
         )
-        [ H.div
+    <|
+        el
             ([ transform state.position state.scale
              , HA.style "box-sizing" "border-box"
              ]
-                ++ contentAttributes
+                |> List.map htmlAttribute
+                |> List.append contentAttributes
             )
             content
-        ]
 
 
 
