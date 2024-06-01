@@ -1,9 +1,9 @@
 {
     "type": "package",
-    "name": "JohanWinther/elm-pan-and-zoom",
-    "summary": "Make an element pannable and zoomable by dragging and scrolling.",
+    "name": "AlecGhost/elmui-pan-and-zoom",
+    "summary": "Make an elm-ui element pannable and zoomable by dragging and scrolling.",
     "license": "BSD-3-Clause",
-    "version": "3.0.0",
+    "version": "1.0.0",
     "exposed-modules": [
         "PanZoom",
         "PanZoom.Mouse"
